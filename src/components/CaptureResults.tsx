@@ -18,8 +18,8 @@ function Artifact({ label, artifact, kind, unavailable, recording }: { label: st
     </div>;
 }
 
-export function CaptureResults({ bot, rows, transcribe }: { bot: BotType; rows: CaptureRowType[]; transcribe: boolean }) {
-    return <details className="rounded-md border p-3 text-sm">
+export function CaptureResults({ bot, rows, transcribe, expanded = false }: { bot: BotType; rows: CaptureRowType[]; transcribe: boolean; expanded?: boolean }) {
+    return <details open={expanded} className="rounded-lg border bg-card p-4 text-sm">
         <summary className="cursor-pointer font-medium">Capture results · {bot.name}</summary>
         <div className="mt-3 grid gap-3">
             <div className="flex flex-wrap items-center gap-2">

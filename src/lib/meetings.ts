@@ -3,9 +3,10 @@ import { db } from "@/db";
 import { write_db } from "@/db/write";
 import { bots, meetings, rooms, type BotType } from "@/db/schema";
 import { bot_create, bot_create_payload, bot_leave } from "@/lib/recall/bot";
+import type { MainRoomMode } from "@/schemas/MeetingSchema";
 import { RecallApiError } from "@/lib/recall/client";
 
-export class UserFacingError extends Error {}
+export class UserFacingError extends Error { meeting_id?: string; }
 
 async function dispatch(bot: BotType, meeting_url: string) {
     const meeting = await db.query.meetings.findFirst({ where: eq(meetings.id, bot.meeting_id) });
@@ -13,7 +14,7 @@ async function dispatch(bot: BotType, meeting_url: string) {
         await write_db(() => db.update(bots).set({ status: "cancelled", active: false, sub_code: "session_stopped" }).where(eq(bots.id, bot.id)));
         return;
     }
-    const payload = bot_create_payload({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id, transcribe: meeting?.transcribe ?? false });
+    const payload = bot_create_payload({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id, transcribe: meeting?.transcribe ?? false, main_mode: meeting?.main_mode });
     await write_db(() => db.update(bots).set({ create_payload: JSON.stringify(payload) }).where(eq(bots.id, bot.id)));
     try {
         const remote = await bot_create(payload);
@@ -34,15 +35,21 @@ async function dispatch(bot: BotType, meeting_url: string) {
     await cleanup_stopped_session(bot.meeting_id);
 }
 
-export async function start_meeting(args: { meeting_url: string; bot_name: string; transcribe?: boolean }) {
+export async function start_meeting(args: { meeting_url: string; bot_name: string; transcribe?: boolean; main_mode?: MainRoomMode }) {
     const id = crypto.randomUUID();
     const bot = await write_db(() => db.transaction(async (tx) => {
         await tx.insert(meetings).values({ id, ...args, created_at: Date.now() });
         return (await tx.insert(bots).values({ id: crypto.randomUUID(), meeting_id: id,
-            name: `${args.bot_name} · Main room`, created_at: Date.now(),
+            name: `${args.bot_name} · ${args.main_mode === "auto_accept_all_invites" ? "Host-assigned bot" : "Main room"}`, created_at: Date.now(),
         }).returning())[0];
     }));
-    await dispatch(bot, args.meeting_url);
+    try { await dispatch(bot, args.meeting_url); }
+    catch (error) {
+        // Keep failed/uncertain creations reviewable on their own meeting page.
+        if (error instanceof UserFacingError) error.meeting_id = id;
+        throw error;
+    }
+    return id;
 }
 
 /** Reserve every selected room before dispatch. The partial unique index is the final duplicate guard. */
@@ -52,6 +59,9 @@ export async function queue_room_bots(args: { meeting_id: string; room_ids: stri
         const main = await tx.query.bots.findFirst({ where: and(eq(bots.meeting_id, args.meeting_id), isNull(bots.room_id)) });
         if (!meeting || meeting.stopped_at || !main?.active || main.stop_requested) {
             throw new UserFacingError("Keep the main-room bot connected before dispatching room bots.");
+        }
+        if (meeting.main_mode !== "join_main_room") {
+            throw new UserFacingError("Room discovery and separate room dispatch require Stay in the main room mode.");
         }
         let queued = 0;
         let skipped = 0;
@@ -92,7 +102,7 @@ export async function process_dispatch_queue(): Promise<void> {
                     const meeting = await db.query.meetings.findFirst({ where: eq(meetings.id, bot.meeting_id) });
                     const room = await db.query.rooms.findFirst({ where: eq(rooms.key, `${bot.meeting_id}:${bot.room_id}`) });
                     const main = await db.query.bots.findFirst({ where: and(eq(bots.meeting_id, bot.meeting_id), isNull(bots.room_id)) });
-                    if (!meeting || meeting.stopped_at || !room?.open || !main?.active || main.stop_requested) {
+                    if (!meeting || meeting.main_mode !== "join_main_room" || meeting.stopped_at || !room?.open || !main?.active || main.stop_requested) {
                         await write_db(() => db.update(bots).set({ status: "cancelled", active: false, sub_code: "room_unavailable" }).where(eq(bots.id, bot.id)));
                         continue;
                     }

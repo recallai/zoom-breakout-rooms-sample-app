@@ -1,6 +1,10 @@
 import { z } from "zod";
 
+export const MainRoomModeSchema = z.enum(["join_main_room", "auto_accept_all_invites"]);
+export type MainRoomMode = z.infer<typeof MainRoomModeSchema>;
+
 export const MeetingSchema = z.object({
+    main_mode: MainRoomModeSchema.default("join_main_room"),
     transcribe: z.boolean().default(false),
     meeting_url: z.string().trim().url().refine((value) => {
         const url = new URL(value);

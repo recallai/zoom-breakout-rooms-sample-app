@@ -1,0 +1,1 @@
+ALTER TABLE `meetings` ADD `main_mode` text DEFAULT 'join_main_room' NOT NULL;

@@ -76,8 +76,9 @@ test("dispatches the two modes and applies webhook state safely", async () => {
         return Response.json({ id });
     };
     try {
-        await start_meeting({ meeting_url: "https://zoom.us/j/123", bot_name: "Demo" });
+        const meetingId = await start_meeting({ meeting_url: "https://zoom.us/j/123", bot_name: "Demo" });
         const main = (await db.select().from(bots))[0];
+        assert.equal(meetingId, main.meeting_id);
         assert.deepEqual(requests[0].body.breakout_room, { mode: "join_main_room" });
         assert.match(requests[0].url, /^https:\/\/us-west-2\.recall\.ai\//);
         assert.deepEqual(JSON.parse(main.create_payload!), requests[0].body);
@@ -358,5 +359,54 @@ test("capture results keep recording and transcript readiness separate and handl
         stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
         assert.equal(stored.status?.code, "unavailable");
         assert.equal((await db.select().from(bots).where(eq(bots.id, bot.id)))[0].capture_error, null);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
+test("host-assigned mode persists, follows room location events, and cannot dispatch separate room bots", async () => {
+    const values = { meeting_url: "https://zoom.us/j/321", bot_name: "Follow host" };
+    assert.equal(MeetingSchema.parse(values).main_mode, "join_main_room");
+    assert.equal(MeetingSchema.safeParse({ ...values, main_mode: "join_specific_room" }).success, false);
+    const input = MeetingSchema.parse({ ...values, main_mode: "auto_accept_all_invites", transcribe: true });
+    const originalFetch = globalThis.fetch;
+    const requests: { url: string; body?: Record<string, any> }[] = [];
+    globalThis.fetch = async (url, init) => {
+        requests.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+        return String(url).endsWith("/leave_call/") ? new Response(null, { status: 200 }) : Response.json({ id: crypto.randomUUID() });
+    };
+    try {
+        const id = await start_meeting(input);
+        const { meetings } = await import("../src/db/schema.ts");
+        const session = (await db.select().from(meetings).where(eq(meetings.id, id)))[0];
+        const bot = (await db.select().from(bots).where(eq(bots.meeting_id, id)))[0];
+        assert.equal(session.main_mode, "auto_accept_all_invites");
+        assert.equal(bot.name, "Follow host · Host-assigned bot");
+        assert.deepEqual(requests[0].body!.breakout_room, { mode: "auto_accept_all_invites" });
+        assert.ok(requests[0].body!.recording_config.transcript);
+        const first = { id: crypto.randomUUID(), name: "First room" };
+        const second = { id: crypto.randomUUID(), name: "Second room" };
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.breakout_room_opened", 1, first));
+        assert.equal((await db.select().from(rooms).where(eq(rooms.meeting_id, id))).length, 0);
+        await assert.rejects(() => queue_room_bots({ meeting_id: id, room_ids: [first.id] }), /require Stay in the main room/);
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.in_call_recording", 2));
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.breakout_room_entered", 3, first));
+        let current = (await db.select().from(bots).where(eq(bots.id, bot.id)))[0];
+        assert.equal(current.location_id, first.id);
+        assert.equal(current.status, "in_call_recording");
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.breakout_room_left", 4, first));
+        current = (await db.select().from(bots).where(eq(bots.id, bot.id)))[0];
+        assert.equal(current.location_id, null);
+        assert.equal(current.active, true); // A room closing does not finish this mode's bot.
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.breakout_room_entered", 5, second));
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.breakout_room_left", 4, first));
+        current = (await db.select().from(bots).where(eq(bots.id, bot.id)))[0];
+        assert.equal(current.location_id, second.id);
+        await stop_session(id);
+        await cleanup_stopped_session(id);
+        assert.equal(requests.length, 2);
+        assert.ok(requests[1].url.endsWith(`/${bot.recall_id}/leave_call/`));
+        await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.done", 6));
+        current = (await db.select().from(bots).where(eq(bots.id, bot.id)))[0];
+        assert.equal(current.active, false);
+        assert.equal(current.location_id, null);
     } finally { globalThis.fetch = originalFetch; }
 });

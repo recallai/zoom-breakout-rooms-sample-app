@@ -4,28 +4,30 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { refresh_captures } from "@/lib/recall/captures";
-import { MeetingSchema } from "@/schemas/MeetingSchema";
+import { MeetingSchema, type MainRoomMode } from "@/schemas/MeetingSchema";
 import { start_meeting, queue_room_bots, process_dispatch_queue, leave_bot, stop_session, cleanup_stopped_session, UserFacingError } from "@/lib/meetings";
 
-export type ActionResult = { error?: string };
+export type ActionResult = { error?: string; meeting_id?: string };
 
 async function run_action(fn: () => Promise<void>): Promise<ActionResult> {
     try {
         await fn();
         return {};
     } catch (error) {
-        if (error instanceof UserFacingError) return { error: error.message };
+        if (error instanceof UserFacingError) return { error: error.message, meeting_id: error.meeting_id };
         console.error("Breakout room action failed:", error instanceof Error ? error.message : "Unknown error");
         return { error: "Couldn't complete this request. Check the server logs and try again." };
     } finally {
-        revalidatePath("/");
+        revalidatePath("/", "layout");
     }
 }
 
-export async function start_meeting_action(values: { meeting_url: string; bot_name: string; transcribe?: boolean }): Promise<ActionResult> {
+export async function start_meeting_action(values: { meeting_url: string; bot_name: string; transcribe?: boolean; main_mode?: MainRoomMode }): Promise<ActionResult> {
     const input = MeetingSchema.safeParse(values);
     if (!input.success) return { error: input.error.issues[0].message };
-    return run_action(() => start_meeting(input.data));
+    let meeting_id: string | undefined;
+    const result = await run_action(async () => { meeting_id = await start_meeting(input.data); });
+    return { ...result, meeting_id: meeting_id ?? result.meeting_id };
 }
 
 export async function queue_rooms_action(meeting_id: string, room_ids: string[]): Promise<ActionResult & { queued?: number; skipped?: number }> {
@@ -36,9 +38,9 @@ export async function queue_rooms_action(meeting_id: string, room_ids: string[])
         after(async () => {
             try { await process_dispatch_queue(); }
             catch (error) { console.error("Dispatch queue interrupted:", error instanceof Error ? error.message : "Unknown error"); }
-            revalidatePath("/");
+            revalidatePath("/", "layout");
         });
-        revalidatePath("/");
+        revalidatePath("/", "layout");
         return result;
     } catch (error) {
         return { error: error instanceof UserFacingError ? error.message : "Couldn't queue these rooms. Refresh and try again." };
@@ -49,7 +51,7 @@ export async function resume_dispatch_action(): Promise<ActionResult> {
     after(async () => {
         try { await process_dispatch_queue(); }
         catch { console.error("Couldn't resume dispatch queue"); }
-        revalidatePath("/");
+        revalidatePath("/", "layout");
     });
     return {};
 }
@@ -72,7 +74,7 @@ export async function stop_session_action(meeting_id: string): Promise<ActionRes
         after(async () => {
             try { await cleanup_stopped_session(meeting_id); }
             catch { console.error("Session cleanup interrupted; retry Stop all session bots."); }
-            revalidatePath("/");
+            revalidatePath("/", "layout");
         });
     });
 }

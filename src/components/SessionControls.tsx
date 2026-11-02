@@ -25,6 +25,6 @@ export function SessionControls({ meetingId, stopped, bots }: { meetingId: strin
                 if (result.error) toast.error(result.error);
                 else toast.success("Session stop requested");
             } catch { toast.error("Connection lost. Refresh to check cleanup status."); }
-        })}>{pending ? "Stopping…" : stopped ? "Retry session cleanup" : "Stop all session bots"}</Button>
+        })}>{pending ? "Stopping…" : stopped ? !active.length ? "All bots stopped" : needsCleanup ? "Retry session cleanup" : "Waiting for bots to leave…" : "Stop all session bots"}</Button>
     </div>;
 }

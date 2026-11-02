@@ -30,7 +30,7 @@ export async function handle_webhook(delivery_id: string, webhook: WebhookType) 
         const at = Date.parse(data.updated_at);
         if (capture_events.has(webhook.event)) {
             await save_capture_event(tx, bot.id, webhook);
-        } else if (room_events.has(webhook.event) && bot.room_id === null && data.breakout_room) {
+        } else if (room_events.has(webhook.event) && bot.room_id === null && meeting?.main_mode === "join_main_room" && data.breakout_room) {
             const room = data.breakout_room;
             const key = `${bot.meeting_id}:${room.id}`;
             const existing = await tx.query.rooms.findFirst({ where: eq(rooms.key, key) });

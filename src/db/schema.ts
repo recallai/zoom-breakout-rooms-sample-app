@@ -6,6 +6,7 @@ export const meetings = sqliteTable("meetings", {
     meeting_url: text("meeting_url").notNull(),
     bot_name: text("bot_name").notNull(),
     stopped_at: integer("stopped_at"),
+    main_mode: text("main_mode", { enum: ["join_main_room", "auto_accept_all_invites"] }).notNull().default("join_main_room"),
     transcribe: integer("transcribe", { mode: "boolean" }).notNull().default(false),
     created_at: integer("created_at").notNull(),
 });

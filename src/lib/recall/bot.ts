@@ -1,13 +1,14 @@
 import { z } from "zod";
+import type { MainRoomMode } from "@/schemas/MeetingSchema";
 import { recall_fetch } from "./client";
 
-export function bot_create_payload(args: { meeting_url: string; name: string; local_id: string; room_id: string | null; transcribe?: boolean }) {
+export function bot_create_payload(args: { meeting_url: string; name: string; local_id: string; room_id: string | null; transcribe?: boolean; main_mode?: MainRoomMode }) {
     return {
         meeting_url: args.meeting_url,
         bot_name: args.name,
         breakout_room: args.room_id
             ? { mode: "join_specific_room", room_id: args.room_id }
-            : { mode: "join_main_room" },
+            : { mode: args.main_mode ?? "join_main_room" },
         recording_config: {
             video_mixed_mp4: {},
             ...(args.transcribe ? { transcript: { provider: { recallai_streaming: { mode: "prioritize_accuracy" } } } } : {}),

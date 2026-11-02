@@ -137,3 +137,16 @@ Expand **Capture results** under any bot, including the main-room bot, and click
 To generate transcripts for new bots, check **Include transcripts for this session** before starting the main bot. It configures Recall.ai transcription on the main bot and all of that session's room bots. Existing recordings are not retranscribed. The full bot capture can include the main meeting before room entry; this version does not trim recordings or transcripts to room intervals.
 
 Subscribe the webhook endpoint to `recording.processing`, `recording.done`, `recording.failed`, `recording.deleted`, `transcript.processing`, `transcript.done`, `transcript.failed`, and `transcript.deleted` in addition to the bot events above. These update local readiness independently. A completed recording does not imply that its transcript has finished. Webhooks do not include signed media links: use **Refresh captures** to fetch those. This sample does not delete media or retry transcription automatically.
+
+## Navigate meetings and rooms
+
+The home page contains the new-session form and a compact meeting list. Submitting the form opens `/meeting/[id]`, where the main bot, batch dispatch, room summaries, and session cleanup live. Open a room card to visit `/meeting/[id]/[breakoutId]` for that room’s dispatch control, bot attempts, captures, timeline, and inspector. Breakout IDs are Recall room UUIDs and are checked against the parent session. Webhook activity is collapsed and scoped to the meeting; the home page no longer combines activity across sessions. Failed or uncertain main-bot creations also open their saved session so the result can be inspected before trying again.
+
+## Choose the initial bot’s behavior
+
+The new-session form offers two modes:
+
+- **Stay in the main room** (`join_main_room`, the sample’s default): declines breakout invitations, discovers rooms, and allows dispatch of separate `join_specific_room` bots from the meeting or room pages.
+- **Follow host assignments** (`auto_accept_all_invites`): one bot follows Zoom assignments/invitations between rooms and returns to the main meeting when a room closes. Its meeting page shows confirmed room location and entry/exit history. It does not discover rooms or support separate-room dispatch. Its recording follows the bot across rooms rather than splitting into per-room files.
+
+**Join a specific room** remains available from discovered room pages because it requires a Recall room ID. Existing sessions retain `join_main_room` when the migration adds the mode column. The mode is chosen at creation; start a new session to use a different behavior.

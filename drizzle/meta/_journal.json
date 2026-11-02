@@ -29,6 +29,13 @@
       "when": 1793581220842,
       "tag": "0003_capture_results",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793588314665,
+      "tag": "0004_main_bot_mode",
+      "breakpoints": true
     }
   ]
 }
