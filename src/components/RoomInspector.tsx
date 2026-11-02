@@ -25,7 +25,7 @@ export function RoomInspector({ room, bots, source, region, events }: {
                 <h4 className="font-medium">{bot.name}</h4>
                 <dl className="grid gap-1 text-xs">
                     <div><dt className="inline font-medium">Requested room: </dt><dd className="inline break-all">{room.name} ({bot.room_id})</dd></div>
-                    <div><dt className="inline font-medium">Confirmed location: </dt><dd className="inline break-all">{!bot.active ? "Bot finished" : bot.location ? `${bot.location} (${bot.location_id ?? "ID not saved"})` : "Awaiting room-entry confirmation"}</dd></div>
+                    <div><dt className="inline font-medium">Confirmed location: </dt><dd className="inline break-all">{!bot.active ? "Bot finished" : bot.status === "queued" ? "Queued for dispatch" : bot.location ? `${bot.location} (${bot.location_id ?? "ID not saved"})` : "Awaiting room-entry confirmation"}</dd></div>
                     <div><dt className="inline font-medium">Bot status: </dt><dd className="inline">{bot.status.replaceAll("_", " ")}</dd></div>
                     <div><dt className="inline font-medium">Exit / failure reason: </dt><dd className="inline">{bot.sub_code ?? "None reported"}</dd></div>
                     <div><dt className="inline font-medium">Local bot ID: </dt><dd className="inline break-all">{bot.id}</dd></div>

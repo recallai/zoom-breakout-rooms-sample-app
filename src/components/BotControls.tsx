@@ -13,7 +13,7 @@ export function BotControls(props: { bot_id: string } | { meeting_id: string; ro
             try {
                 const result = leave ? await leave_bot_action(props.bot_id) : await join_room_action(props.meeting_id, props.room_id);
                 if (result.error) toast.error(result.error);
-                else toast.success(leave ? "Bot asked to leave" : "Room bot dispatched");
+                else toast.success(leave ? "Bot asked to leave" : "Room bot queued");
             } catch { toast.error("Connection lost. Refresh to check the bot before retrying."); }
         });
     }}>{pending ? (leave ? "Leaving…" : "Sending…") : (leave ? "Leave call" : "Send room bot")}</Button>;

@@ -2,6 +2,7 @@ import { desc } from "drizzle-orm";
 import { NetworkIcon } from "lucide-react";
 import { db } from "@/db";
 import { meetings, bots, rooms, events, type BotType } from "@/db/schema";
+import { MultiRoomControls } from "@/components/MultiRoomControls";
 import { RoomInspector } from "@/components/RoomInspector";
 import { MeetingForm } from "@/components/MeetingForm";
 import { BotControls } from "@/components/BotControls";
@@ -70,6 +71,9 @@ export default async function HomePage() {
                         <div className="grid gap-2"><h2 className="font-medium">Main room <Badge variant="outline">join_main_room</Badge></h2>{main && <BotStatus bot={main} />}</div>
                         <div className="grid gap-3">
                             <h2 className="font-medium">Breakout rooms <Badge variant="outline">join_specific_room</Badge></h2>
+                            <MultiRoomControls meetingId={meeting.id} disabled={!main?.active || main.status === "leaving"}
+                                rooms={sessionRooms.filter((room) => room.open && !sessionBots.some((bot) => bot.room_id === room.room_id && bot.active)).map((room) => ({ id: room.room_id, name: room.name }))}
+                                bots={sessionBots.filter((bot) => bot.room_id !== null)} />
                             {!sessionRooms.length && <p className="rounded-lg bg-muted px-4 py-5 text-muted-foreground">Waiting for room webhooks. If rooms don’t appear, check the webhook endpoint, the main bot’s status, and Zoom’s “Let participants choose room” setting.</p>}
                             {sessionRooms.map((room) => {
                                 const roomBots = sessionBots.filter((bot) => bot.room_id === room.room_id);

@@ -15,7 +15,7 @@ const { db } = await import("../src/db/index.ts");
 const { bots, rooms, events } = await import("../src/db/schema.ts");
 const { migrate } = await import("drizzle-orm/libsql/migrator");
 const { eq } = await import("drizzle-orm");
-const { start_meeting, join_room, leave_bot } = await import("../src/lib/meetings.ts");
+const { start_meeting, join_room, leave_bot, queue_room_bots, process_dispatch_queue } = await import("../src/lib/meetings.ts");
 const { handle_webhook } = await import("../src/lib/recall/events.ts");
 const { verify_webhook_request } = await import("../src/lib/recall/webhook.ts");
 const { build_room_timeline } = await import("../src/lib/room_timeline.ts");
@@ -172,5 +172,42 @@ test("reserves rooms under concurrent dispatch and distinguishes rejected from u
         const recovered = (await db.select().from(bots).where(eq(bots.id, uncertain.id)))[0];
         assert.equal(recovered.status, "in_call_recording");
         assert.equal(recovered.recall_id, remote_id);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("queues a batch without API calls, bounds concurrency, skips reservations and isolates room failures", async () => {
+    const originalFetch = globalThis.fetch;
+    let live = 0;
+    let peak = 0;
+    const sent: string[] = [];
+    globalThis.fetch = async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (body.breakout_room.mode === "join_main_room") return Response.json({ id: crypto.randomUUID() });
+        live++;
+        peak = Math.max(peak, live);
+        sent.push(body.breakout_room.room_id);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        live--;
+        return body.bot_name.endsWith("Room 2") ? new Response(null, { status: 400 }) : Response.json({ id: crypto.randomUUID() });
+    };
+    try {
+        await start_meeting({ meeting_url: "https://zoom.us/j/555", bot_name: "Batch" });
+        const main = (await db.select().from(bots).where(eq(bots.name, "Batch · Main room")))[0];
+        const opened = Array.from({ length: 6 }, (_, i) => ({ id: crypto.randomUUID(), name: `Room ${i + 1}` }));
+        for (const room of opened) await handle_webhook(crypto.randomUUID(), webhook(main.recall_id!, "bot.breakout_room_opened", 10, room));
+        assert.deepEqual(await queue_room_bots({ meeting_id: main.meeting_id, room_ids: opened.map((room) => room.id) }), { queued: 6, skipped: 0 });
+        assert.equal(sent.length, 0);
+        assert.deepEqual(await queue_room_bots({ meeting_id: main.meeting_id, room_ids: [opened[0].id] }), { queued: 0, skipped: 1 });
+        await handle_webhook(crypto.randomUUID(), webhook(main.recall_id!, "bot.breakout_room_closed", 20, opened[5]));
+        await Promise.all([process_dispatch_queue(), process_dispatch_queue()]);
+        assert.equal(peak, 2);
+        assert.equal(sent.length, 5);
+        assert.equal(new Set(sent).size, 5);
+        const children = (await db.select().from(bots).where(eq(bots.meeting_id, main.meeting_id))).filter((bot) => bot.room_id);
+        assert.equal(children.filter((bot) => bot.status === "create_failed").length, 1);
+        assert.equal(children.filter((bot) => bot.status === "joining_call").length, 4);
+        assert.equal(children.filter((bot) => bot.status === "cancelled" && !bot.active).length, 1);
+        await assert.rejects(() => queue_room_bots({ meeting_id: main.meeting_id, room_ids: [crypto.randomUUID()] }), /no longer available/);
     } finally { globalThis.fetch = originalFetch; }
 });

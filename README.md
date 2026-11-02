@@ -118,3 +118,9 @@ The guide's mode examples and Zoom prerequisites map directly to this sample. A 
 Expand **Inspect this room** to compare the requested room with the bot's confirmed location, inspect the exact Create Bot body and room-discovery webhook, and open the bot in the regional Recall dashboard. API keys and authorization headers are never saved in these payloads. Request bodies and webhook payloads are captured for new operations; older sessions show an explicit message when those details were not saved.
 
 The inspector also includes a chronological room timeline, combining local dispatch requests, room-open/close notifications from the observer, and lifecycle/location events from each room bot. Times are ordered by the event timestamp, rather than delivery order. An elapsed indicator stays visible while a dispatched bot is awaiting room-entry confirmation; recording in the main meeting alone is not treated as a successful room join. Older sessions may have incomplete discovery history because raw webhook details were not previously saved.
+
+## Dispatch several rooms
+
+Use **Send to all open rooms** or expand **Choose rooms** and send a selection. The server reserves all selected rooms in SQLite, then creates at most two room bots concurrently after acknowledging the action. Active and uncertain reservations are skipped. Each room retains its own result, so one rejection does not stop the rest; bot creation is never automatically retried.
+
+The queue runs inside the single local Next.js process, without another worker service. If the process restarts, use **Resume queued dispatches** for reservations still marked queued. A creation interrupted after its API request needs manual dashboard verification; it is not automatically resent. Rooms that close before their queued creation starts are cancelled. The summary distinguishes queued, joining, confirmed in-room, failed, and uncertain bots.
