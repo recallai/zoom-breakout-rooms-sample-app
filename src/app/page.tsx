@@ -80,7 +80,7 @@ export default async function HomePage() {
                                         <BotControls meeting_id={meeting.id} room_id={room.room_id} disabled={!room.open || !main?.active || main.status === "leaving" || active} />
                                     </div>
                                     {roomBots.map((bot) => <BotStatus key={bot.id} bot={bot} />)}
-                                    <RoomInspector room={room} bots={roomBots} source={activity.find((event) => event.id === room.source_event_id)} region={env.RECALL_REGION} />
+                                    <RoomInspector room={room} bots={roomBots} source={activity.find((event) => event.id === room.source_event_id)} region={env.RECALL_REGION} events={activity} />
                                 </div>;
                             })}
                         </div>

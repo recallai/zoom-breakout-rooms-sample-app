@@ -1,3 +1,4 @@
+import { RoomTimeline } from "@/components/RoomTimeline";
 import type { BotType, EventType, RoomType } from "@/db/schema";
 
 function JsonBlock({ value }: { value: string | null | undefined }) {
@@ -7,13 +8,14 @@ function JsonBlock({ value }: { value: string | null | undefined }) {
 }
 
 /** Native disclosure keeps this reference view small and usable without client-side state. */
-export function RoomInspector({ room, bots, source, region }: {
-    room: RoomType; bots: BotType[]; source?: EventType; region: string;
+export function RoomInspector({ room, bots, source, region, events }: {
+    room: RoomType; bots: BotType[]; source?: EventType; region: string; events: EventType[];
 }) {
     return <details className="rounded-md border p-3 text-sm">
         <summary className="cursor-pointer font-medium">Inspect this room</summary>
         <div className="mt-4 grid min-w-0 gap-4">
             <p className="break-all text-xs text-muted-foreground">Session: {room.meeting_id}<br />Recall room ID: {room.room_id}</p>
+            <RoomTimeline room={room} bots={bots} events={events} />
             <div className="grid gap-2"><h4 className="font-medium">Room discovery webhook</h4>
                 {source && <p className="break-all text-xs text-muted-foreground">{source.event} · Delivery {source.id}</p>}
                 <JsonBlock value={source?.payload} />
