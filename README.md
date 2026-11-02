@@ -1,6 +1,6 @@
 # Zoom Breakout Rooms sample
 
-A small Next.js app for [DX-428](https://linear.app/recallai/issue/DX-428/sample-app-zoom-breakout-rooms). It demonstrates two Recall.ai bot modes:
+A small Next.js app for Zoom Breakout Rooms. It demonstrates two Recall.ai bot modes:
 
 - **Stay in the main meeting:** send a `join_main_room` bot that declines breakout invitations and discovers rooms.
 - **Join a specific room:** choose a discovered room and send a separate `join_specific_room` bot using the Recall room ID from its webhook.
