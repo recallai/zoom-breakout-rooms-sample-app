@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const MeetingSchema = z.object({
+    transcribe: z.boolean().default(false),
     meeting_url: z.string().trim().url().refine((value) => {
         const url = new URL(value);
         return url.protocol === "https:" && !url.username && !url.password

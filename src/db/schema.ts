@@ -6,6 +6,7 @@ export const meetings = sqliteTable("meetings", {
     meeting_url: text("meeting_url").notNull(),
     bot_name: text("bot_name").notNull(),
     stopped_at: integer("stopped_at"),
+    transcribe: integer("transcribe", { mode: "boolean" }).notNull().default(false),
     created_at: integer("created_at").notNull(),
 });
 
@@ -19,6 +20,8 @@ export const bots = sqliteTable("bots", {
     sub_code: text("sub_code"),
     stop_requested: integer("stop_requested", { mode: "boolean" }).notNull().default(false),
     stop_error: text("stop_error"),
+    capture_error: text("capture_error"),
+    capture_checked_at: integer("capture_checked_at"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     status_at: integer("status_at").notNull().default(0),
     create_payload: text("create_payload"),
@@ -57,3 +60,12 @@ export type BotType = typeof bots.$inferSelect;
 export type RoomType = typeof rooms.$inferSelect;
 
 export type EventType = typeof events.$inferSelect;
+
+// One bot can produce more than one recording. Keep its media shortcuts together as a small snapshot.
+export const captures = sqliteTable("captures", {
+    id: text("id").primaryKey(),
+    bot_id: text("bot_id").notNull().references(() => bots.id),
+    snapshot: text("snapshot").notNull(),
+    checked_at: integer("checked_at"),
+});
+export type CaptureRowType = typeof captures.$inferSelect;

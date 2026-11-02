@@ -1,13 +1,14 @@
 import { and, eq, lte } from "drizzle-orm";
 import { db } from "@/db";
+import { save_capture_event } from "@/lib/recall/captures";
 import { write_db } from "@/db/write";
 import { bots, events, rooms, meetings } from "@/db/schema";
 import type { WebhookType } from "@/schemas/WebhookSchema";
-import { can_apply_status, lifecycle_events, room_events, location_events, terminal_statuses } from "@/lib/bot_state";
+import { can_apply_status, lifecycle_events, room_events, location_events, capture_events, terminal_statuses } from "@/lib/bot_state";
 
 /** Persist synchronously before acknowledging. A failed transaction returns 500 so Recall retries. */
 export async function handle_webhook(delivery_id: string, webhook: WebhookType) {
-    if (![lifecycle_events, room_events, location_events].some((set) => set.has(webhook.event))) return;
+    if (![lifecycle_events, room_events, location_events, capture_events].some((set) => set.has(webhook.event))) return;
     return write_db(() => db.transaction(async (tx) => {
         const { bot: remote, data } = webhook.data;
         let bot = await tx.query.bots.findFirst({ where: eq(bots.recall_id, remote.id) });
@@ -27,7 +28,9 @@ export async function handle_webhook(delivery_id: string, webhook: WebhookType) 
         if (!inserted.length) return bot.meeting_id;
         await tx.update(bots).set({ recall_id: remote.id }).where(eq(bots.id, bot.id));
         const at = Date.parse(data.updated_at);
-        if (room_events.has(webhook.event) && bot.room_id === null && data.breakout_room) {
+        if (capture_events.has(webhook.event)) {
+            await save_capture_event(tx, bot.id, webhook);
+        } else if (room_events.has(webhook.event) && bot.room_id === null && data.breakout_room) {
             const room = data.breakout_room;
             const key = `${bot.meeting_id}:${room.id}`;
             const existing = await tx.query.rooms.findFirst({ where: eq(rooms.key, key) });

@@ -12,6 +12,7 @@ export function MeetingForm() {
     const [pending, startTransition] = useTransition();
     const [meetingUrl, setMeetingUrl] = useState("");
     const [botName, setBotName] = useState("Breakout Demo");
+    const [transcribe, setTranscribe] = useState(false);
     const [error, setError] = useState<string>();
     return (
         <Card>
@@ -25,7 +26,7 @@ export function MeetingForm() {
                     setError(undefined);
                     startTransition(async () => {
                         try {
-                        const result = await start_meeting_action({ meeting_url: meetingUrl, bot_name: botName });
+                        const result = await start_meeting_action({ meeting_url: meetingUrl, bot_name: botName, transcribe });
                         if (result.error) setError(result.error);
                         else { toast.success("Main-room bot dispatched"); setMeetingUrl(""); }
                         } catch { setError("Connection lost. Refresh and check the Recall dashboard before sending another bot."); }
@@ -38,6 +39,10 @@ export function MeetingForm() {
                         <Input id="bot-name" required maxLength={75} value={botName} onChange={(e) => setBotName(e.target.value)} disabled={pending} />
                     </div>
                     <Button type="submit" disabled={pending}>{pending ? "Sending…" : "Send main-room bot"}</Button>
+                    <label className="flex items-center gap-2 text-sm sm:col-span-3">
+                        <input type="checkbox" checked={transcribe} disabled={pending} onChange={(event) => setTranscribe(event.target.checked)} />
+                        Include transcripts for this session (Recall.ai transcription usage applies)
+                    </label>
                     {error && <p role="alert" className="text-sm text-destructive sm:col-span-3">{error}</p>}
                 </form>
             </CardContent>

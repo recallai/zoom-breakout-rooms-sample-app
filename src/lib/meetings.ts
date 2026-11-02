@@ -13,7 +13,7 @@ async function dispatch(bot: BotType, meeting_url: string) {
         await write_db(() => db.update(bots).set({ status: "cancelled", active: false, sub_code: "session_stopped" }).where(eq(bots.id, bot.id)));
         return;
     }
-    const payload = bot_create_payload({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id });
+    const payload = bot_create_payload({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id, transcribe: meeting?.transcribe ?? false });
     await write_db(() => db.update(bots).set({ create_payload: JSON.stringify(payload) }).where(eq(bots.id, bot.id)));
     try {
         const remote = await bot_create(payload);
@@ -34,7 +34,7 @@ async function dispatch(bot: BotType, meeting_url: string) {
     await cleanup_stopped_session(bot.meeting_id);
 }
 
-export async function start_meeting(args: { meeting_url: string; bot_name: string }) {
+export async function start_meeting(args: { meeting_url: string; bot_name: string; transcribe?: boolean }) {
     const id = crypto.randomUUID();
     const bot = await write_db(() => db.transaction(async (tx) => {
         await tx.insert(meetings).values({ id, ...args, created_at: Date.now() });

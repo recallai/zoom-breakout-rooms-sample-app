@@ -19,6 +19,10 @@ const { start_meeting, join_room, leave_bot, queue_room_bots, process_dispatch_q
 const { handle_webhook } = await import("../src/lib/recall/events.ts");
 const { verify_webhook_request } = await import("../src/lib/recall/webhook.ts");
 const { build_room_timeline } = await import("../src/lib/room_timeline.ts");
+const { captures } = await import("../src/db/schema.ts");
+const { refresh_captures, capture_download_url } = await import("../src/lib/recall/captures.ts");
+const { CaptureSchema } = await import("../src/schemas/CaptureSchema.ts");
+const { WebhookSchema } = await import("../src/schemas/WebhookSchema.ts");
 const { MeetingSchema } = await import("../src/schemas/MeetingSchema.ts");
 const { POST } = await import("../src/app/api/webhooks/recall/route.ts");
 await migrate(db, { migrationsFolder: "./drizzle" });
@@ -288,5 +292,71 @@ test("late webhooks identify uncertain creations for cleanup, and leave failures
         assert.equal(saved.stop_error, null);
         await handle_webhook(crypto.randomUUID(), webhook(remote_id, "bot.done", 20));
         assert.equal((await db.select().from(bots).where(eq(bots.id, main.id)))[0].active, false);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("capture results keep recording and transcript readiness separate and handle expiry and stale events", async () => {
+    const originalFetch = globalThis.fetch;
+    const recording_id = crypto.randomUUID();
+    const transcript_id = crypto.randomUUID();
+    const status = (code: string, seconds: number) => ({ code, sub_code: null, updated_at: webhook(crypto.randomUUID(), "unused", seconds).data.data.updated_at });
+    const recording = {
+        id: recording_id, status: status("done", 10), expires_at: new Date(Date.now() + 3600000).toISOString(),
+        media_shortcuts: {
+            video_mixed: { id: crypto.randomUUID(), status: status("done", 10), format: "mp4", data: { download_url: "https://media.example/video.mp4" } },
+            transcript: { id: transcript_id, status: status("processing", 10), data: { download_url: "https://media.example/partial.json" } },
+        },
+    };
+    const requests: { url: string; method: string }[] = [];
+    let createBody: any;
+    globalThis.fetch = async (input, init) => {
+        requests.push({ url: String(input), method: init?.method ?? "GET" });
+        if (init?.method === "POST") { createBody = JSON.parse(String(init.body)); return Response.json({ id: crypto.randomUUID() }); }
+        return Response.json({ recordings: [recording] });
+    };
+    try {
+        await start_meeting({ meeting_url: "https://zoom.us/j/888", bot_name: "Capture", transcribe: true });
+        assert.deepEqual(createBody.recording_config.transcript, { provider: { recallai_streaming: { mode: "prioritize_accuracy" } } });
+        const bot = (await db.select().from(bots).where(eq(bots.name, "Capture · Main room")))[0];
+        await refresh_captures(bot.id);
+        assert.equal(requests.at(-1)!.method, "GET");
+        assert.ok(requests.at(-1)!.url.endsWith(`/${bot.recall_id}/`));
+        let stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
+        assert.equal(capture_download_url(stored, stored.media_shortcuts?.video_mixed), "https://media.example/video.mp4");
+        assert.equal(capture_download_url(stored, stored.media_shortcuts?.transcript), null);
+        assert.equal(capture_download_url({ ...stored, expires_at: new Date(0).toISOString() }, stored.media_shortcuts?.video_mixed), null);
+        const captureEvent = (event: string, seconds: number) => ({
+            ...webhook(bot.recall_id!, event, seconds), data: {
+                ...webhook(bot.recall_id!, event, seconds).data,
+                recording: { id: recording_id }, ...(event.startsWith("transcript.") ? { transcript: { id: transcript_id } } : {}),
+            },
+        });
+        assert.equal(WebhookSchema.safeParse(captureEvent("transcript.done", 20)).success, true);
+        assert.equal(WebhookSchema.safeParse(webhook(bot.recall_id!, "transcript.done", 20)).success, false);
+        await handle_webhook(crypto.randomUUID(), captureEvent("transcript.done", 20));
+        // A newer done event must not bless a previously returned partial/processing URL.
+        stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
+        assert.equal(stored.media_shortcuts?.transcript?.status?.code, "done");
+        assert.equal(capture_download_url(stored, stored.media_shortcuts?.transcript), null);
+        recording.media_shortcuts.transcript = { id: transcript_id, status: status("done", 20), data: { download_url: "https://media.example/final.json" } };
+        await refresh_captures(bot.id);
+        stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
+        assert.equal(capture_download_url(stored, stored.media_shortcuts?.transcript), "https://media.example/final.json");
+        await handle_webhook(crypto.randomUUID(), captureEvent("recording.deleted", 30));
+        await handle_webhook(crypto.randomUUID(), captureEvent("recording.done", 25));
+        await refresh_captures(bot.id); // API fixture is stale relative to deleted webhook.
+        stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
+        assert.equal(stored.status?.code, "deleted");
+        assert.equal(capture_download_url(stored, stored.media_shortcuts?.video_mixed), null);
+        assert.equal(stored.media_shortcuts?.transcript?.data, null);
+        globalThis.fetch = async () => new Response(null, { status: 404 });
+        await assert.rejects(() => refresh_captures(bot.id), /404/);
+        assert.match((await db.select().from(bots).where(eq(bots.id, bot.id)))[0].capture_error!, /404/);
+        globalThis.fetch = async () => Response.json({ recordings: [] });
+        await refresh_captures(bot.id);
+        stored = CaptureSchema.parse(JSON.parse((await db.select().from(captures).where(eq(captures.id, recording_id)))[0].snapshot));
+        assert.equal(stored.status?.code, "unavailable");
+        assert.equal((await db.select().from(bots).where(eq(bots.id, bot.id)))[0].capture_error, null);
     } finally { globalThis.fetch = originalFetch; }
 });

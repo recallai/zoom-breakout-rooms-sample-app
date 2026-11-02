@@ -3,6 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { refresh_captures } from "@/lib/recall/captures";
 import { MeetingSchema } from "@/schemas/MeetingSchema";
 import { start_meeting, queue_room_bots, process_dispatch_queue, leave_bot, stop_session, cleanup_stopped_session, UserFacingError } from "@/lib/meetings";
 
@@ -21,7 +22,7 @@ async function run_action(fn: () => Promise<void>): Promise<ActionResult> {
     }
 }
 
-export async function start_meeting_action(values: { meeting_url: string; bot_name: string }): Promise<ActionResult> {
+export async function start_meeting_action(values: { meeting_url: string; bot_name: string; transcribe?: boolean }): Promise<ActionResult> {
     const input = MeetingSchema.safeParse(values);
     if (!input.success) return { error: input.error.issues[0].message };
     return run_action(() => start_meeting(input.data));
@@ -74,4 +75,9 @@ export async function stop_session_action(meeting_id: string): Promise<ActionRes
             revalidatePath("/");
         });
     });
+}
+
+export async function refresh_captures_action(local_id: string): Promise<ActionResult> {
+    if (!z.string().uuid().safeParse(local_id).success) return { error: "Invalid bot ID." };
+    return run_action(() => refresh_captures(local_id));
 }

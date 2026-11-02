@@ -63,7 +63,7 @@ The app verifies the raw body, rejects signatures older than five minutes, dedup
 2. Paste the Zoom meeting join URL into the app and send the main-room bot. Admit it and allow recording when prompted.
 3. Open breakout rooms in Zoom. The app lists room names and Recall room IDs when the main bot emits room-opened webhooks.
 4. Click **Send room bot** for a room. Admit that bot if necessary. The app shows its lifecycle status and confirmed room entry separately.
-5. Optionally dispatch bots to other rooms. Each bot captures only its own room. Room-specific bots end their calls when their rooms close; the main bot stays in the main meeting.
+5. Optionally dispatch bots to other rooms. Each bot captures its current room; a room bot can also capture the main meeting before entering its target room. Room-specific bots end their calls when their rooms close; the main bot stays in the main meeting.
 6. Use **Leave call** to stop a bot. Stopping the main bot marks its discovered rooms unavailable; any separate room bots must be stopped individually or by closing their rooms.
 
 The room list is scoped to the main bot's local meeting session. The app never substitutes Zoom's internal room ID or a room name for a Recall room ID. An open-room notification alone does not guarantee successful entry: the new bot must receive that room in Zoom's room list. Check the displayed failure sub-code, including `breakout_room_not_open`.
@@ -102,7 +102,7 @@ For a live check, run through the Zoom steps above and confirm `bot.breakout_roo
 
 ## Scope
 
-This is a local, single-user sample. There is no authentication, automatic dispatch to every room, recording player, or bot movement between rooms. Keep the controls private; if exposing it beyond local development, add authentication and a persistent database deployment. The SQLite file must survive server restarts; ephemeral/serverless storage is not suitable for this setup.
+This is a local, single-user sample. There is no authentication, automatic dispatch when rooms open, or bot movement between rooms. Keep the controls private; if exposing it beyond local development, add authentication and a persistent database deployment. The SQLite file must survive server restarts; ephemeral/serverless storage is not suitable for this setup.
 
 ## References and documentation feedback
 
@@ -128,3 +128,12 @@ The queue runs inside the single local Next.js process, without another worker s
 ## Stop a session
 
 **Stop all session bots** first persists the stopped session and cancels unsent reservations. It then asks every known bot (including the main bot) to leave. Any Create Bot request already in flight is handled when its response arrives; if a response is lost, a later webhook can identify and stop that bot. The app waits for terminal webhooks before marking remote bots finished. Individual leave failures stay visible and can be retried without blocking cleanup of other bots. Stopped sessions cannot dispatch more bots; start a new session to try again. Stopping only the main bot with its individual control does not stop separate room bots.
+
+
+## Capture results
+
+Expand **Capture results** under any bot, including the main-room bot, and click **Refresh captures**. This makes one Retrieve Bot request for that bot and saves its recording embeds locally; the regular five-second UI refresh does not poll Recall. Each recording shows separate video/audio/transcript states and playback or download links only for ready artifacts. Refresh again if signed links expire. Deleted or expired recordings are marked unavailable.
+
+To generate transcripts for new bots, check **Include transcripts for this session** before starting the main bot. It configures Recall.ai transcription on the main bot and all of that session's room bots. Existing recordings are not retranscribed. The full bot capture can include the main meeting before room entry; this version does not trim recordings or transcripts to room intervals.
+
+Subscribe the webhook endpoint to `recording.processing`, `recording.done`, `recording.failed`, `recording.deleted`, `transcript.processing`, `transcript.done`, `transcript.failed`, and `transcript.deleted` in addition to the bot events above. These update local readiness independently. A completed recording does not imply that its transcript has finished. Webhooks do not include signed media links: use **Refresh captures** to fetch those. This sample does not delete media or retry transcription automatically.

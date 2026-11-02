@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     catch { return new Response("Invalid JSON", { status: 400 }); }
     // Acknowledge unrelated events, but reject malformed events this app handles.
     const event = (json as { event?: unknown } | null)?.event;
-    const { lifecycle_events, room_events, location_events } = await import("@/lib/bot_state");
-    if (typeof event !== "string" || ![lifecycle_events, room_events, location_events].some((set) => set.has(event))) {
+    const { lifecycle_events, room_events, location_events, capture_events } = await import("@/lib/bot_state");
+    if (typeof event !== "string" || ![lifecycle_events, room_events, location_events, capture_events].some((set) => set.has(event))) {
         return new Response(null, { status: 200 });
     }
     const result = WebhookSchema.safeParse(json);

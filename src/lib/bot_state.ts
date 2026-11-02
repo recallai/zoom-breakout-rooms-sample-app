@@ -11,3 +11,8 @@ export const terminal_statuses = new Set(["call_ended", "done", "fatal"]);
 export function can_apply_status(current: { status_at: number; active: boolean }, timestamp: number, status: string) {
     return timestamp >= current.status_at && (current.active || terminal_statuses.has(status));
 }
+
+export const capture_events = new Set([
+    "recording.processing", "recording.done", "recording.failed", "recording.deleted",
+    "transcript.processing", "transcript.done", "transcript.failed", "transcript.deleted",
+]);

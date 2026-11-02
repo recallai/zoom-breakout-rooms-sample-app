@@ -1,7 +1,8 @@
 import { desc } from "drizzle-orm";
 import { NetworkIcon } from "lucide-react";
 import { db } from "@/db";
-import { meetings, bots, rooms, events, type BotType } from "@/db/schema";
+import { meetings, bots, rooms, events, captures, type BotType } from "@/db/schema";
+import { CaptureResults } from "@/components/CaptureResults";
 import { SessionControls } from "@/components/SessionControls";
 import { MultiRoomControls } from "@/components/MultiRoomControls";
 import { RoomInspector } from "@/components/RoomInspector";
@@ -29,11 +30,12 @@ function BotStatus({ bot }: { bot: BotType }) {
 }
 
 export default async function HomePage() {
-    const [sessions, allBots, allRooms, activity] = await Promise.all([
+    const [sessions, allBots, allRooms, activity, allCaptures] = await Promise.all([
         db.select().from(meetings).orderBy(desc(meetings.created_at)),
         db.select().from(bots).orderBy(desc(bots.created_at)),
         db.select().from(rooms).orderBy(rooms.name),
         db.select().from(events).orderBy(desc(events.happened_at)),
+        db.select().from(captures),
     ]);
     return <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-wrap items-start justify-between gap-4">
@@ -53,7 +55,7 @@ export default async function HomePage() {
                 <p>1. In Zoom, enable <strong className="text-foreground">Let participants choose room</strong>, then open your breakout rooms.</p>
                 <p>2. Send a main-room bot below. Admit it and grant recording permission when Zoom prompts you.</p>
                 <p>3. Rooms appear from webhooks. Choose a room and send a separate bot to it. A room bot leaves the call when its room closes.</p>
-                <p>Configure <code>/api/webhooks/recall</code> in the <a className="underline" href={`https://${env.RECALL_REGION}.recall.ai/dashboard/webhooks/`} target="_blank" rel="noreferrer">Recall webhooks dashboard</a>. Subscribe to bot lifecycle and all four breakout-room events. <a className="underline" href="https://docs.recall.ai/docs/zoom-breakout-rooms" target="_blank" rel="noreferrer">Setup guide ↗</a></p>
+                <p>Configure <code>/api/webhooks/recall</code> in the <a className="underline" href={`https://${env.RECALL_REGION}.recall.ai/dashboard/webhooks/`} target="_blank" rel="noreferrer">Recall webhooks dashboard</a>. Subscribe to bot lifecycle, all four breakout-room events, and recording/transcript status events (see README). <a className="underline" href="https://docs.recall.ai/docs/zoom-breakout-rooms" target="_blank" rel="noreferrer">Setup guide ↗</a></p>
                 <p className="text-xs">Region: {env.RECALL_REGION} · Local state refreshes every 5 seconds.</p>
             </CardContent>
         </Card>
@@ -71,7 +73,7 @@ export default async function HomePage() {
                     </CardHeader>
                     <CardContent className="grid gap-6">
                         <SessionControls meetingId={meeting.id} stopped={!!meeting.stopped_at} bots={sessionBots} />
-                        <div className="grid gap-2"><h2 className="font-medium">Main room <Badge variant="outline">join_main_room</Badge></h2>{main && <BotStatus bot={main} />}</div>
+                        <div className="grid gap-2"><h2 className="font-medium">Main room <Badge variant="outline">join_main_room</Badge></h2>{main && <><BotStatus bot={main} /><CaptureResults bot={main} rows={allCaptures.filter((row) => row.bot_id === main.id)} transcribe={meeting.transcribe} /></>}</div>
                         <div className="grid gap-3">
                             <h2 className="font-medium">Breakout rooms <Badge variant="outline">join_specific_room</Badge></h2>
                             <MultiRoomControls meetingId={meeting.id} disabled={!!meeting.stopped_at || !main?.active || main.stop_requested}
@@ -86,7 +88,7 @@ export default async function HomePage() {
                                         <div className="grid gap-1"><div className="flex items-center gap-2"><h3 className="font-medium">{room.name}</h3><Badge variant={room.open ? "secondary" : "outline"}>{room.open ? "Open" : "Closed"}</Badge></div><code className="break-all text-xs text-muted-foreground">{room.room_id}</code></div>
                                         <BotControls meeting_id={meeting.id} room_id={room.room_id} disabled={!room.open || !!meeting.stopped_at || !main?.active || main.stop_requested || active} />
                                     </div>
-                                    {roomBots.map((bot) => <BotStatus key={bot.id} bot={bot} />)}
+                                    {roomBots.map((bot) => <div key={bot.id} className="grid gap-2"><BotStatus bot={bot} /><CaptureResults bot={bot} rows={allCaptures.filter((row) => row.bot_id === bot.id)} transcribe={meeting.transcribe} /></div>)}
                                     <RoomInspector room={room} bots={roomBots} source={activity.find((event) => event.id === room.source_event_id)} region={env.RECALL_REGION} events={activity} />
                                 </div>;
                             })}
