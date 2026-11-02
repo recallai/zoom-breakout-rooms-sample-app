@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { MeetingSchema } from "@/schemas/MeetingSchema";
-import { start_meeting, queue_room_bots, process_dispatch_queue, leave_bot, UserFacingError } from "@/lib/meetings";
+import { start_meeting, queue_room_bots, process_dispatch_queue, leave_bot, stop_session, cleanup_stopped_session, UserFacingError } from "@/lib/meetings";
 
 export type ActionResult = { error?: string };
 
@@ -62,4 +62,16 @@ export async function join_room_action(meeting_id: string, room_id: string): Pro
 export async function leave_bot_action(local_id: string): Promise<ActionResult> {
     if (!z.string().uuid().safeParse(local_id).success) return { error: "Invalid bot ID." };
     return run_action(() => leave_bot(local_id));
+}
+
+export async function stop_session_action(meeting_id: string): Promise<ActionResult> {
+    if (!z.string().uuid().safeParse(meeting_id).success) return { error: "Invalid meeting ID." };
+    return run_action(async () => {
+        await stop_session(meeting_id);
+        after(async () => {
+            try { await cleanup_stopped_session(meeting_id); }
+            catch { console.error("Session cleanup interrupted; retry Stop all session bots."); }
+            revalidatePath("/");
+        });
+    });
 }

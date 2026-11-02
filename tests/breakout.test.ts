@@ -15,7 +15,7 @@ const { db } = await import("../src/db/index.ts");
 const { bots, rooms, events } = await import("../src/db/schema.ts");
 const { migrate } = await import("drizzle-orm/libsql/migrator");
 const { eq } = await import("drizzle-orm");
-const { start_meeting, join_room, leave_bot, queue_room_bots, process_dispatch_queue } = await import("../src/lib/meetings.ts");
+const { start_meeting, join_room, leave_bot, queue_room_bots, process_dispatch_queue, stop_session, cleanup_stopped_session } = await import("../src/lib/meetings.ts");
 const { handle_webhook } = await import("../src/lib/recall/events.ts");
 const { verify_webhook_request } = await import("../src/lib/recall/webhook.ts");
 const { build_room_timeline } = await import("../src/lib/room_timeline.ts");
@@ -209,5 +209,84 @@ test("queues a batch without API calls, bounds concurrency, skips reservations a
         assert.equal(children.filter((bot) => bot.status === "joining_call").length, 4);
         assert.equal(children.filter((bot) => bot.status === "cancelled" && !bot.active).length, 1);
         await assert.rejects(() => queue_room_bots({ meeting_id: main.meeting_id, room_ids: [crypto.randomUUID()] }), /no longer available/);
+    } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test("session stop cancels queued work and cleans up in-flight creations without marking them finished early", async () => {
+    const originalFetch = globalThis.fetch;
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const twoStarted = new Promise<void>((resolve) => { started = resolve; });
+    const created: string[] = [];
+    const left: string[] = [];
+    globalThis.fetch = async (input, init) => {
+        if (String(input).endsWith("/leave_call/")) { left.push(String(input)); return new Response(null, { status: 200 }); }
+        const body = JSON.parse(String(init?.body));
+        const id = crypto.randomUUID();
+        if (body.breakout_room.mode === "join_specific_room") {
+            created.push(id);
+            if (created.length === 2) started();
+            await gate;
+        }
+        return Response.json({ id });
+    };
+    try {
+        await start_meeting({ meeting_url: "https://zoom.us/j/666", bot_name: "Stop batch" });
+        const main = (await db.select().from(bots).where(eq(bots.name, "Stop batch · Main room")))[0];
+        const opened = Array.from({ length: 5 }, (_, i) => ({ id: crypto.randomUUID(), name: `Room ${i + 1}` }));
+        for (const room of opened) await handle_webhook(crypto.randomUUID(), webhook(main.recall_id!, "bot.breakout_room_opened", 10, room));
+        await queue_room_bots({ meeting_id: main.meeting_id, room_ids: opened.map((room) => room.id) });
+        const draining = process_dispatch_queue();
+        await twoStarted;
+        await stop_session(main.meeting_id);
+        await cleanup_stopped_session(main.meeting_id);
+        release();
+        await draining;
+        await cleanup_stopped_session(main.meeting_id);
+        const stored = await db.select().from(bots).where(eq(bots.meeting_id, main.meeting_id));
+        assert.equal(created.length, 2);
+        assert.equal(stored.filter((bot) => bot.status === "cancelled").length, 3);
+        assert.equal(left.length, 3); // main + the two remote bots that were already being created
+        assert.equal(stored.filter((bot) => bot.active && bot.stop_requested).length, 3);
+        await assert.rejects(() => queue_room_bots({ meeting_id: main.meeting_id, room_ids: [opened[0].id] }), /main-room bot connected/);
+        for (const bot of stored.filter((bot) => bot.recall_id)) {
+            await handle_webhook(crypto.randomUUID(), webhook(bot.recall_id!, "bot.call_ended", 50));
+        }
+        assert.equal((await db.select().from(bots).where(eq(bots.meeting_id, main.meeting_id))).some((bot) => bot.active), false);
+    } finally { release(); globalThis.fetch = originalFetch; }
+});
+
+test("late webhooks identify uncertain creations for cleanup, and leave failures remain retryable", async () => {
+    const originalFetch = globalThis.fetch;
+    let metadata: Record<string, string> = {};
+    globalThis.fetch = async (_input, init) => { metadata = JSON.parse(String(init?.body)).metadata; throw new Error("Lost creation response"); };
+    try {
+        await assert.rejects(() => start_meeting({ meeting_url: "https://zoom.us/j/777", bot_name: "Late stop" }), /could not be confirmed/);
+        const main = (await db.select().from(bots).where(eq(bots.name, "Late stop · Main room")))[0];
+        await stop_session(main.meeting_id);
+        const remote_id = crypto.randomUUID();
+        const id = await handle_webhook(crypto.randomUUID(), {
+            ...webhook(remote_id, "bot.in_call_recording", 10),
+            data: { ...webhook(remote_id, "bot.in_call_recording", 10).data, bot: { id: remote_id, metadata } },
+        });
+        assert.equal(id, main.meeting_id);
+        globalThis.fetch = async () => new Response(null, { status: 503 });
+        await cleanup_stopped_session(main.meeting_id);
+        let saved = (await db.select().from(bots).where(eq(bots.id, main.id)))[0];
+        assert.equal(saved.active, true);
+        assert.equal(saved.status, "stop_failed");
+        assert.match(saved.stop_error!, /503/);
+        let leaves = 0;
+        globalThis.fetch = async () => { leaves++; return new Response(null, { status: 200 }); };
+        await cleanup_stopped_session(main.meeting_id);
+        await cleanup_stopped_session(main.meeting_id);
+        assert.equal(leaves, 1);
+        saved = (await db.select().from(bots).where(eq(bots.id, main.id)))[0];
+        assert.equal(saved.status, "leaving");
+        assert.equal(saved.stop_error, null);
+        await handle_webhook(crypto.randomUUID(), webhook(remote_id, "bot.done", 20));
+        assert.equal((await db.select().from(bots).where(eq(bots.id, main.id)))[0].active, false);
     } finally { globalThis.fetch = originalFetch; }
 });

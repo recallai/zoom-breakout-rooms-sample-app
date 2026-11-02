@@ -15,6 +15,13 @@
       "when": 1793580810866,
       "tag": "0001_room_inspector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793581018432,
+      "tag": "0002_session_cleanup",
+      "breakpoints": true
     }
   ]
 }

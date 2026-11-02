@@ -5,6 +5,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
 registerHooks({
     resolve(specifier, context, nextResolve) {
+        if (specifier === 'next/server') return nextResolve('next/server.js', context);
         const base = specifier.startsWith('@/') ? path.resolve('src', specifier.slice(2))
             : specifier.startsWith('.') && context.parentURL?.startsWith('file:')
                 ? path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier) : null;

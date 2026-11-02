@@ -1,3 +1,5 @@
+import { after } from "next/server";
+import { cleanup_stopped_session } from "@/lib/meetings";
 import { verify_webhook_request } from "@/lib/recall/webhook";
 import { handle_webhook } from "@/lib/recall/events";
 import { WebhookSchema } from "@/schemas/WebhookSchema";
@@ -22,6 +24,10 @@ export async function POST(request: Request) {
     }
     const result = WebhookSchema.safeParse(json);
     if (!result.success) return new Response("Invalid event", { status: 400 });
-    await handle_webhook(request.headers.get("webhook-id") ?? request.headers.get("svix-id")!, result.data);
+    const meeting_id = await handle_webhook(request.headers.get("webhook-id") ?? request.headers.get("svix-id")!, result.data);
+    if (meeting_id) after(async () => {
+        try { await cleanup_stopped_session(meeting_id); }
+        catch { console.error("Session cleanup interrupted; retry Stop all session bots."); }
+    });
     return new Response(null, { status: 200 });
 }

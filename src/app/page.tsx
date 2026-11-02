@@ -2,6 +2,7 @@ import { desc } from "drizzle-orm";
 import { NetworkIcon } from "lucide-react";
 import { db } from "@/db";
 import { meetings, bots, rooms, events, type BotType } from "@/db/schema";
+import { SessionControls } from "@/components/SessionControls";
 import { MultiRoomControls } from "@/components/MultiRoomControls";
 import { RoomInspector } from "@/components/RoomInspector";
 import { MeetingForm } from "@/components/MeetingForm";
@@ -18,10 +19,11 @@ export const runtime = "nodejs";
 function BotStatus({ bot }: { bot: BotType }) {
     return <div className="flex flex-wrap items-center gap-2">
         <Badge variant={bot.status === "fatal" || bot.status === "create_failed" || bot.status === "creation_unknown" ? "destructive" : "secondary"}>{bot.status.replaceAll("_", " ")}</Badge>
+        {bot.stop_error && <span role="alert" className="text-xs text-destructive">{bot.stop_error}. Retry leaving this bot.</span>}
         {bot.sub_code && <span className="text-xs text-muted-foreground">{bot.sub_code}</span>}
         {bot.active && bot.location && <span className="text-xs">In {bot.location}</span>}
         {bot.recall_id && <span className="break-all font-mono text-xs text-muted-foreground">{bot.recall_id}</span>}
-        {bot.active && bot.recall_id && bot.status !== "leaving" && <BotControls bot_id={bot.id} />}
+        {bot.active && bot.recall_id && (!bot.stop_requested || bot.stop_error) && <BotControls bot_id={bot.id} />}
         {bot.status === "creation_unknown" && <span className="text-xs text-destructive">Check the Recall dashboard before sending another bot.</span>}
     </div>;
 }
@@ -68,10 +70,11 @@ export default async function HomePage() {
                         <CardDescription className="break-all">{meeting.meeting_url}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-6">
+                        <SessionControls meetingId={meeting.id} stopped={!!meeting.stopped_at} bots={sessionBots} />
                         <div className="grid gap-2"><h2 className="font-medium">Main room <Badge variant="outline">join_main_room</Badge></h2>{main && <BotStatus bot={main} />}</div>
                         <div className="grid gap-3">
                             <h2 className="font-medium">Breakout rooms <Badge variant="outline">join_specific_room</Badge></h2>
-                            <MultiRoomControls meetingId={meeting.id} disabled={!main?.active || main.status === "leaving"}
+                            <MultiRoomControls meetingId={meeting.id} disabled={!!meeting.stopped_at || !main?.active || main.stop_requested}
                                 rooms={sessionRooms.filter((room) => room.open && !sessionBots.some((bot) => bot.room_id === room.room_id && bot.active)).map((room) => ({ id: room.room_id, name: room.name }))}
                                 bots={sessionBots.filter((bot) => bot.room_id !== null)} />
                             {!sessionRooms.length && <p className="rounded-lg bg-muted px-4 py-5 text-muted-foreground">Waiting for room webhooks. If rooms don’t appear, check the webhook endpoint, the main bot’s status, and Zoom’s “Let participants choose room” setting.</p>}
@@ -81,7 +84,7 @@ export default async function HomePage() {
                                 return <div key={room.key} className="grid gap-3 rounded-lg border p-4">
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div className="grid gap-1"><div className="flex items-center gap-2"><h3 className="font-medium">{room.name}</h3><Badge variant={room.open ? "secondary" : "outline"}>{room.open ? "Open" : "Closed"}</Badge></div><code className="break-all text-xs text-muted-foreground">{room.room_id}</code></div>
-                                        <BotControls meeting_id={meeting.id} room_id={room.room_id} disabled={!room.open || !main?.active || main.status === "leaving" || active} />
+                                        <BotControls meeting_id={meeting.id} room_id={room.room_id} disabled={!room.open || !!meeting.stopped_at || !main?.active || main.stop_requested || active} />
                                     </div>
                                     {roomBots.map((bot) => <BotStatus key={bot.id} bot={bot} />)}
                                     <RoomInspector room={room} bots={roomBots} source={activity.find((event) => event.id === room.source_event_id)} region={env.RECALL_REGION} events={activity} />

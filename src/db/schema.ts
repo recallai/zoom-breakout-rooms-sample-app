@@ -5,6 +5,7 @@ export const meetings = sqliteTable("meetings", {
     id: text("id").primaryKey(),
     meeting_url: text("meeting_url").notNull(),
     bot_name: text("bot_name").notNull(),
+    stopped_at: integer("stopped_at"),
     created_at: integer("created_at").notNull(),
 });
 
@@ -16,6 +17,8 @@ export const bots = sqliteTable("bots", {
     name: text("name").notNull(),
     status: text("status").notNull().default("creating"),
     sub_code: text("sub_code"),
+    stop_requested: integer("stop_requested", { mode: "boolean" }).notNull().default(false),
+    stop_error: text("stop_error"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     status_at: integer("status_at").notNull().default(0),
     create_payload: text("create_payload"),
