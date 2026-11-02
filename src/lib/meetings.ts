@@ -1,14 +1,16 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { bots, meetings, rooms, type BotType } from "@/db/schema";
-import { bot_create, bot_leave } from "@/lib/recall/bot";
+import { bot_create, bot_create_payload, bot_leave } from "@/lib/recall/bot";
 import { RecallApiError } from "@/lib/recall/client";
 
 export class UserFacingError extends Error {}
 
 async function dispatch(bot: BotType, meeting_url: string) {
+    const payload = bot_create_payload({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id });
+    await db.update(bots).set({ create_payload: JSON.stringify(payload) }).where(eq(bots.id, bot.id));
     try {
-        const remote = await bot_create({ meeting_url, name: bot.name, local_id: bot.id, room_id: bot.room_id });
+        const remote = await bot_create(payload);
         // Do not overwrite status if an early webhook has already advanced it.
         await db.update(bots).set({ recall_id: remote.id }).where(eq(bots.id, bot.id));
         await db.update(bots).set({ status: "joining_call" }).where(and(eq(bots.id, bot.id), eq(bots.status, "creating")));

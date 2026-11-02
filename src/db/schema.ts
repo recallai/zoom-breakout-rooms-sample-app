@@ -18,6 +18,8 @@ export const bots = sqliteTable("bots", {
     sub_code: text("sub_code"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     status_at: integer("status_at").notNull().default(0),
+    create_payload: text("create_payload"),
+    location_id: text("location_id"),
     location: text("location"),
     location_at: integer("location_at").notNull().default(0),
     created_at: integer("created_at").notNull(),
@@ -32,6 +34,7 @@ export const rooms = sqliteTable("rooms", {
     room_id: text("room_id").notNull(),
     name: text("name").notNull(),
     open: integer("open", { mode: "boolean" }).notNull(),
+    source_event_id: text("source_event_id"),
     updated_at: integer("updated_at").notNull(),
 });
 
@@ -41,6 +44,7 @@ export const events = sqliteTable("events", {
     bot_id: text("bot_id").notNull(),
     event: text("event").notNull(),
     detail: text("detail"),
+    payload: text("payload"),
     happened_at: integer("happened_at").notNull(),
     received_at: integer("received_at").notNull(),
 });
@@ -48,3 +52,5 @@ export const events = sqliteTable("events", {
 export type MeetingType = typeof meetings.$inferSelect;
 export type BotType = typeof bots.$inferSelect;
 export type RoomType = typeof rooms.$inferSelect;
+
+export type EventType = typeof events.$inferSelect;

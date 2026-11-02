@@ -112,3 +112,7 @@ This is a local, single-user sample. There is no authentication, automatic dispa
 - [Verify Recall requests](https://docs.recall.ai/docs/authenticating-requests-from-recallai)
 
 The guide's mode examples and Zoom prerequisites map directly to this sample. A complete coordinator-to-room walkthrough would make it easier to connect those pieces. The guide could also show the exact dashboard event subscriptions and signing-secret setup alongside its room-discovery example.
+
+## Inspect a room
+
+Expand **Inspect this room** to compare the requested room with the bot's confirmed location, inspect the exact Create Bot body and room-discovery webhook, and open the bot in the regional Recall dashboard. API keys and authorization headers are never saved in these payloads. Request bodies and webhook payloads are captured for new operations; older sessions show an explicit message when those details were not saved.

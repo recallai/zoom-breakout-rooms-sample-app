@@ -19,6 +19,7 @@ export async function handle_webhook(delivery_id: string, webhook: WebhookType) 
         const inserted = await tx.insert(events).values({
             id: delivery_id, meeting_id: bot.meeting_id, bot_id: bot.id, event: webhook.event,
             detail: data.breakout_room?.name ?? data.sub_code ?? null,
+            payload: JSON.stringify(webhook),
             happened_at: Date.parse(data.updated_at), received_at: Date.now(),
         }).onConflictDoNothing().returning();
         if (!inserted.length) return;
@@ -31,12 +32,15 @@ export async function handle_webhook(delivery_id: string, webhook: WebhookType) 
             if (!existing || at >= existing.updated_at) {
                 await tx.insert(rooms).values({ key, meeting_id: bot.meeting_id, room_id: room.id,
                     name: room.name, open: webhook.event === "bot.breakout_room_opened", updated_at: at,
+                    source_event_id: webhook.event === "bot.breakout_room_opened" ? delivery_id : null,
                 }).onConflictDoUpdate({ target: rooms.key, set: {
                     name: room.name, open: webhook.event === "bot.breakout_room_opened", updated_at: at,
+                    ...(webhook.event === "bot.breakout_room_opened" ? { source_event_id: delivery_id } : {}),
                 } });
             }
         } else if (location_events.has(webhook.event) && bot.active && data.breakout_room && at >= bot.location_at) {
             await tx.update(bots).set({
+                location_id: webhook.event === "bot.breakout_room_entered" ? data.breakout_room.id : null,
                 location: webhook.event === "bot.breakout_room_entered" ? data.breakout_room.name : null,
                 location_at: at,
             }).where(eq(bots.id, bot.id));
@@ -45,7 +49,7 @@ export async function handle_webhook(delivery_id: string, webhook: WebhookType) 
             if (can_apply_status(bot, at, status)) {
                 await tx.update(bots).set({ status, sub_code: data.sub_code ?? (status === "done" ? bot.sub_code : null), status_at: at,
                     active: !terminal_statuses.has(status),
-                    ...(terminal_statuses.has(status) ? { location: null, location_at: Math.max(at, bot.location_at) } : {}),
+                    ...(terminal_statuses.has(status) ? { location: null, location_id: null, location_at: Math.max(at, bot.location_at) } : {}),
                 }).where(eq(bots.id, bot.id));
                 if (bot.room_id === null && terminal_statuses.has(status)) {
                     // Once the observer has left, its old room list is no longer authoritative.

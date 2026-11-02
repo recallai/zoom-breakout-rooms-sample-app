@@ -75,6 +75,7 @@ test("dispatches the two modes and applies webhook state safely", async () => {
         const main = (await db.select().from(bots))[0];
         assert.deepEqual(requests[0].body.breakout_room, { mode: "join_main_room" });
         assert.match(requests[0].url, /^https:\/\/us-west-2\.recall\.ai\//);
+        assert.deepEqual(JSON.parse(main.create_payload!), requests[0].body);
         assert.equal(main.status, "in_waiting_room");
         assert.ok(main.recall_id);
         const room = { id: crypto.randomUUID(), name: "Design" };
@@ -82,6 +83,8 @@ test("dispatches the two modes and applies webhook state safely", async () => {
         await handle_webhook("same-delivery", opened);
         await handle_webhook("same-delivery", opened);
         assert.equal((await db.select().from(events).where(eq(events.id, "same-delivery"))).length, 1);
+        assert.equal((await db.select().from(rooms))[0].source_event_id, "same-delivery");
+        assert.deepEqual(JSON.parse((await db.select().from(events).where(eq(events.id, "same-delivery")))[0].payload!), opened);
         await handle_webhook("closed", webhook(main.recall_id!, "bot.breakout_room_closed", 20, room));
         await handle_webhook("late-open", webhook(main.recall_id!, "bot.breakout_room_opened", 15, room));
         assert.equal((await db.select().from(rooms))[0].open, false);
@@ -97,6 +100,7 @@ test("dispatches the two modes and applies webhook state safely", async () => {
         let updated = (await db.select().from(bots).where(eq(bots.id, child.id)))[0];
         assert.equal(updated.status, "in_call_recording");
         assert.equal(updated.location, "Design");
+        assert.equal(updated.location_id, room.id);
         await leave_bot(child.id);
         assert.ok(requests.at(-1)!.url.endsWith(`/${child.recall_id}/leave_call/`));
         await handle_webhook("ended", webhook(child.recall_id!, "bot.call_ended", 50));

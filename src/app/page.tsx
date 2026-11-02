@@ -2,6 +2,7 @@ import { desc } from "drizzle-orm";
 import { NetworkIcon } from "lucide-react";
 import { db } from "@/db";
 import { meetings, bots, rooms, events, type BotType } from "@/db/schema";
+import { RoomInspector } from "@/components/RoomInspector";
 import { MeetingForm } from "@/components/MeetingForm";
 import { BotControls } from "@/components/BotControls";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -29,7 +30,7 @@ export default async function HomePage() {
         db.select().from(meetings).orderBy(desc(meetings.created_at)),
         db.select().from(bots).orderBy(desc(bots.created_at)),
         db.select().from(rooms).orderBy(rooms.name),
-        db.select().from(events).orderBy(desc(events.happened_at)).limit(40),
+        db.select().from(events).orderBy(desc(events.happened_at)),
     ]);
     return <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-wrap items-start justify-between gap-4">
@@ -79,6 +80,7 @@ export default async function HomePage() {
                                         <BotControls meeting_id={meeting.id} room_id={room.room_id} disabled={!room.open || !main?.active || main.status === "leaving" || active} />
                                     </div>
                                     {roomBots.map((bot) => <BotStatus key={bot.id} bot={bot} />)}
+                                    <RoomInspector room={room} bots={roomBots} source={activity.find((event) => event.id === room.source_event_id)} region={env.RECALL_REGION} />
                                 </div>;
                             })}
                         </div>
@@ -89,7 +91,7 @@ export default async function HomePage() {
         <Card>
             <CardHeader><CardTitle>Webhook activity</CardTitle><CardDescription>Latest 40 events for bots created by this app. Room and status updates are stored locally.</CardDescription></CardHeader>
             <CardContent>
-                {!activity.length ? <p className="text-muted-foreground">No events received yet.</p> : <ul className="divide-y">{activity.map((event) => {
+                {!activity.length ? <p className="text-muted-foreground">No events received yet.</p> : <ul className="divide-y">{activity.slice(0, 40).map((event) => {
                     const bot = allBots.find((bot) => bot.id === event.bot_id);
                     return <li key={event.id} className="flex flex-wrap justify-between gap-2 py-3"><div className="grid gap-1"><span className="font-mono text-xs">{event.event}</span><span className="text-xs text-muted-foreground">{bot?.name}{event.detail ? ` · ${event.detail}` : ""}</span></div><span className="text-xs text-muted-foreground"><ClientTime value={event.happened_at} /></span></li>;
                 })}</ul>}

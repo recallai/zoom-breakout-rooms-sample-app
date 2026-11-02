@@ -8,6 +8,13 @@
       "when": 1793577203823,
       "tag": "0000_outgoing_reptil",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793580810866,
+      "tag": "0001_room_inspector",
+      "breakpoints": true
     }
   ]
 }
