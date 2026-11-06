@@ -1,28 +1,34 @@
 import { z } from "zod";
 
 const timestamp = z.string().datetime({ offset: true });
-export const WebhookSchema = z.object({
+export const WebhookSchema = z
+  .object({
     event: z.string(),
     data: z.object({
-        bot: z.object({ id: z.string().uuid(), metadata: z.record(z.string(), z.unknown()).optional() }),
-        recording: z.object({ id: z.string().uuid() }).optional(),
-        transcript: z.object({ id: z.string().uuid() }).optional(),
-        data: z.object({
-            updated_at: timestamp,
-            code: z.string().optional(),
-            sub_code: z.string().nullish(),
-            breakout_room: z.object({ id: z.string().uuid(), name: z.string() }).optional(),
-        }),
+      bot: z.object({
+        id: z.string().uuid(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
+      }),
+      recording: z.object({ id: z.string().uuid() }).optional(),
+      transcript: z.object({ id: z.string().uuid() }).optional(),
+      data: z.object({
+        updated_at: timestamp,
+        code: z.string().optional(),
+        sub_code: z.string().nullish(),
+        breakout_room: z.object({ id: z.string().uuid(), name: z.string() }).optional(),
+      }),
     }),
-}).superRefine((value, ctx) => {
+  })
+  .superRefine((value, ctx) => {
     if (/^(recording|transcript)\./.test(value.event) && !value.data.recording) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing recording" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing recording" });
     }
     if (/^(transcript)\./.test(value.event)) {
-        if (!value.data.transcript) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing media artifact" });
+      if (!value.data.transcript)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing media artifact" });
     }
     if (value.event.startsWith("bot.breakout_room_") && !value.data.data.breakout_room) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing breakout room" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Missing breakout room" });
     }
-});
+  });
 export type WebhookType = z.infer<typeof WebhookSchema>;

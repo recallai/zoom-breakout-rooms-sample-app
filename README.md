@@ -1,9 +1,21 @@
 # Zoom Breakout Rooms sample
 
-A small Next.js app for Zoom Breakout Rooms. It demonstrates two Recall.ai bot modes:
+A Recall.ai sample app built with Next.js that demonstrates recording Zoom breakout rooms. Follow along with the [Zoom Breakout Rooms guide](https://docs.recall.ai/docs/zoom-breakout-rooms).
 
-- **Stay in the main meeting:** send a `join_main_room` bot that declines breakout invitations and discovers rooms.
-- **Join a specific room:** choose a discovered room and send a separate `join_specific_room` bot using the Recall room ID from its webhook.
+The sample demonstrates two flows:
+
+1. **Always stay in the main meeting room:** send a coordinator bot that records main, rejects breakout invitations, and discovers rooms.
+2. **Join a specific room:** open a discovered room and send a separate bot using its Recall room ID.
+
+The app also includes **Accept any invite** to demonstrate the guide's default API behavior. The modes map to the app as follows:
+
+| Guide mode                                      | Where to try it                                                             | Behavior                                                                                                                                        |
+| ----------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accept any invite (`auto_accept_all_invites`)   | Select **Accept any invite** when starting a session.                       | Accepts host assignments and returns to main when a room closes. Works with room self-selection disabled; Zoom or the host must assign the bot. |
+| Always stay in the main room (`join_main_room`) | Select **Always stay in the main room** when starting a session.            | Records main and rejects room invitations. With **Let participants choose room** enabled, discovers open rooms through webhooks.                |
+| Join a specific room (`join_specific_room`)     | In a main-room session, open a discovered room and click **Send room bot**. | Uses the Recall room ID from the discovery webhook, ignores invitations to other rooms, and ends its call when its room closes.                 |
+
+Recall's default API behavior is `auto_accept_all_invites`. The form selects `auto_accept_all_invites` by default. Select **Always stay in the main room** to try the coordinator-to-room flow. One bot records one room at a time; simultaneous coverage requires a separate bot per room.
 
 Built with the same conventions as `calendar_v2_next`: Next.js App Router, TypeScript, server actions, Zod schemas, Drizzle with local SQLite, Tailwind, and the existing Base UI/shadcn components. No OAuth setup or background workers are needed.
 
@@ -24,12 +36,12 @@ Open [localhost:3000](http://localhost:3000). Migrations run automatically on se
 
 For this checkout, the Recall API key, its matching region, and webhook secret have already been copied from the calendar sample into the ignored `.env`. OAuth credentials were not copied. Do not overwrite that file with `.env.sample` unless you intend to reconfigure it.
 
-| Variable | Purpose |
-| --- | --- |
-| `RECALL_API_KEY` | Server-side Recall API key |
-| `RECALL_REGION` | Region for that key: `us-east-1`, `us-west-2`, `eu-central-1`, or `ap-northeast-1` |
+| Variable                | Purpose                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `RECALL_API_KEY`        | Server-side Recall API key                                                                 |
+| `RECALL_REGION`         | Region for that key: `us-east-1`, `us-west-2`, `eu-central-1`, or `ap-northeast-1`         |
 | `RECALL_WEBHOOK_SECRET` | Workspace verification secret, or this endpoint's Svix signing secret for a legacy account |
-| `DATABASE_URL` | Optional SQLite URL; defaults to `file:./data/app.db` |
+| `DATABASE_URL`          | Optional SQLite URL; defaults to `file:./data/app.db`                                      |
 
 ## Connect webhooks
 
@@ -57,10 +69,18 @@ bot.breakout_room_left
 
 The app verifies the raw body, rejects signatures older than five minutes, deduplicates deliveries, and commits each event before returning 200. It ignores bots belonging to other apps in the same workspace. Reloading the UI reads local SQLite; it does not poll Recall for bot status.
 
-## Try the two flows
+## Try accept any invite
+
+1. Start a Zoom meeting and create breakout rooms. **Let participants choose room** can remain disabled for this flow.
+2. Paste the regular Zoom meeting URL into the app, select **Accept any invite**, and send the bot. Admit it and allow recording if prompted.
+3. Assign the bot to a breakout room using Zoom. The session page shows `bot.breakout_room_entered` and `bot.breakout_room_left` events as they arrive.
+4. Close the room and confirm that the bot returns to the main meeting. You can assign it again for another round.
+5. Use **Leave call** or **Stop all session bots** when finished. Captures follow the bot across rooms; they are not split into one file per room.
+
+## Try main-room coordination and a specific room
 
 1. Start a Zoom meeting as host and enable **Let participants choose room** in the breakout-room options.
-2. Paste the Zoom meeting join URL into the app and send the main-room bot. Admit it and allow recording when prompted.
+2. Paste the Zoom meeting join URL into the app, select **Always stay in the main room**, and send the main-room bot. Admit it and allow recording when prompted.
 3. Open breakout rooms in Zoom. The app lists room names and Recall room IDs when the main bot emits room-opened webhooks.
 4. Click **Send room bot** for a room. Admit that bot if necessary. The app shows its lifecycle status and confirmed room entry separately.
 5. Optionally dispatch bots to other rooms. Each bot captures its current room; a room bot can also capture the main meeting before entering its target room. Room-specific bots end their calls when their rooms close; the main bot stays in the main meeting.
@@ -89,14 +109,18 @@ Bot creation is intentionally not retried automatically. If a response is lost o
 ## Checks
 
 ```sh
-npm test
+npm run lint
+npm run format:check
 npm run typecheck
+npm test
 npm run build
 ```
 
 Dependency audit: high-severity findings from the reference lockfile were fixed. npm still reports low/moderate advisories in shadcn tooling and drizzle-kit’s loader dependencies; no forced major downgrades were applied.
 
-Tests use a temporary SQLite database and mocked Recall responses; they never create real bots. They cover the two create payloads, early webhooks, duplicate deliveries, out-of-order room/status events, room reservations, room closure, leaving, URL validation, and signature verification.
+Run `npm run format` to apply formatting, organize imports, and apply safe lint fixes with [Biome](https://biomejs.dev/). Generated migrations metadata and the dependency lockfile are excluded.
+
+The unit tests cover bot state rules and capture merging/download eligibility. Use the two manual walkthroughs above to verify the documented modes with a live Zoom meeting.
 
 For a live check, run through the Zoom steps above and confirm `bot.breakout_room_entered` after dispatch. A build or mocked test cannot confirm Zoom permissions or webhook delivery for your workspace.
 
@@ -115,7 +139,7 @@ The guide's mode examples and Zoom prerequisites map directly to this sample. A 
 
 ## Inspect a room
 
-Expand **Inspect this room** to compare the requested room with the bot's confirmed location, inspect the exact Create Bot body and room-discovery webhook, and open the bot in the regional Recall dashboard. API keys and authorization headers are never saved in these payloads. Request bodies and webhook payloads are captured for new operations; older sessions show an explicit message when those details were not saved.
+Expand **Inspect this room** to compare the requested room with the bot's confirmed location and inspect the room-discovery webhook. Each bot has a separate **Bot configuration** accordion containing its exact Create Bot JSON, and an **Open bot in Recall dashboard** link. API keys and authorization headers are never saved in these payloads. Request bodies and webhook payloads are captured for new operations; older sessions show an explicit message when those details were not saved.
 
 The inspector also includes a chronological room timeline, combining local dispatch requests, room-open/close notifications from the observer, and lifecycle/location events from each room bot. Times are ordered by the event timestamp, rather than delivery order. An elapsed indicator stays visible while a dispatched bot is awaiting room-entry confirmation; recording in the main meeting alone is not treated as a successful room join. Older sessions may have incomplete discovery history because raw webhook details were not previously saved.
 
@@ -129,14 +153,13 @@ The queue runs inside the single local Next.js process, without another worker s
 
 **Stop all session bots** first persists the stopped session and cancels unsent reservations. It then asks every known bot (including the main bot) to leave. Any Create Bot request already in flight is handled when its response arrives; if a response is lost, a later webhook can identify and stop that bot. The app waits for terminal webhooks before marking remote bots finished. Individual leave failures stay visible and can be retried without blocking cleanup of other bots. Stopped sessions cannot dispatch more bots; start a new session to try again. Stopping only the main bot with its individual control does not stop separate room bots.
 
-
 ## Capture results
 
-Expand **Capture results** under any bot, including the main-room bot, and click **Refresh captures**. This makes one Retrieve Bot request for that bot and saves its recording embeds locally; the regular five-second UI refresh does not poll Recall. Each recording shows separate video/audio/transcript states and playback or download links only for ready artifacts. Refresh again if signed links expire. Deleted or expired recordings are marked unavailable.
+**Capture results** appears directly under each bot, including the main-room bot. When recording completion appears in the local webhook state, the page automatically makes a Retrieve Bot request to load playback links. Transcript completion triggers an additional lookup when applicable. These lookups happen once per completion state while the component is mounted; the regular five-second UI refresh reads SQLite. **Refresh captures** remains available to retry a failed lookup or renew expired links. Each recording shows separate video/audio/transcript states and playback or download links only for ready artifacts. Refresh again if signed links expire. Deleted or expired recordings are marked unavailable.
 
 To generate transcripts for new bots, check **Include transcripts for this session** before starting the main bot. It configures Recall.ai transcription on the main bot and all of that session's room bots. Existing recordings are not retranscribed. The full bot capture can include the main meeting before room entry; this version does not trim recordings or transcripts to room intervals.
 
-Subscribe the webhook endpoint to `recording.processing`, `recording.done`, `recording.failed`, `recording.deleted`, `transcript.processing`, `transcript.done`, `transcript.failed`, and `transcript.deleted` in addition to the bot events above. These update local readiness independently. A completed recording does not imply that its transcript has finished. Webhooks do not include signed media links: use **Refresh captures** to fetch those. This sample does not delete media or retry transcription automatically.
+Subscribe the webhook endpoint to `recording.processing`, `recording.done`, `recording.failed`, `recording.deleted`, `transcript.processing`, `transcript.done`, `transcript.failed`, and `transcript.deleted` in addition to the bot events above. These update local readiness independently. A completed recording does not imply that its transcript has finished. Webhooks do not include signed media links: the page fetches them automatically after completion, or you can use **Refresh captures**. This sample does not delete media or retry transcription automatically.
 
 ## Navigate meetings and rooms
 
