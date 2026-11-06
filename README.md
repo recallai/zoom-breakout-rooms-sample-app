@@ -17,7 +17,7 @@ The app also includes **Accept any invite** to demonstrate the guide's default A
 
 Recall's default API behavior is `auto_accept_all_invites`. The form selects `auto_accept_all_invites` by default. Select **Always stay in the main room** to try the coordinator-to-room flow. One bot records one room at a time; simultaneous coverage requires a separate bot per room.
 
-Built with the same conventions as `calendar_v2_next`: Next.js App Router, TypeScript, server actions, Zod schemas, Drizzle with local SQLite, Tailwind, and the existing Base UI/shadcn components. No OAuth setup or background workers are needed.
+Built with Next.js App Router, TypeScript, server actions, Zod schemas, Drizzle with local SQLite, Tailwind, and Base UI/shadcn components. No OAuth setup or background workers are needed.
 
 ## Run locally
 
@@ -33,8 +33,6 @@ npm run dev
 The dev and build commands use Next’s webpack compiler.
 
 Open [localhost:3000](http://localhost:3000). Migrations run automatically on server startup and create `data/app.db`. To run migrations manually, use `npm run db:migrate`.
-
-For this checkout, the Recall API key, its matching region, and webhook secret have already been copied from the calendar sample into the ignored `.env`. OAuth credentials were not copied. Do not overwrite that file with `.env.sample` unless you intend to reconfigure it.
 
 | Variable                | Purpose                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
